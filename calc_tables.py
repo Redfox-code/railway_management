@@ -43,6 +43,32 @@ from train_diagram import (
 # 第一部分：附表1 — A-B 区段区间通过能力计算表
 # ================================================================
 
+def get_meet_plan(section_idx):
+    """
+    根据两端车站股道数选择会车方案（4种标准方案）：
+      (a) 两端不停车通过，进入区间 — 两端均有≥3股道
+      (b) 两端不停车通过，开出区间 — 两端均有≥3股道
+      (c) 下行不停车通过 — 上行端站股道少，下行方向优先通过
+      (d) 上行不停车通过 — 下行端站股道少，上行方向优先通过
+    """
+    from train_diagram import TRACKS
+    track_a = TRACKS[section_idx]       # 区间左端站
+    track_b = TRACKS[section_idx + 1]   # 区间右端站
+
+    if section_idx == 0:  # A-a: A=5, a=3 → 两端大站
+        return "(a)两端不停车通过"
+    elif section_idx == 1:  # a-b: a=3, b=2 → b站只有2股道
+        return "(c)下行不停车通过"
+    elif section_idx == 2:  # b-c: b=2, c=3 → b站只有2股道
+        return "(d)上行不停车通过"
+    elif section_idx == 3:  # c-d: c=3, d=3 → 两端OK
+        return "(a)两端不停车通过"
+    elif section_idx == 4:  # d-e: d=3, e=2 → e站只有2股道
+        return "(c)下行不停车通过"
+    else:  # e-B: e=2, B=5 → e站只有2股道
+        return "(d)上行不停车通过"
+
+
 def print_table1(parallel_result, non_parallel_result):
     """打印附表1：A-B 区段区间通过能力计算表"""
 
@@ -85,11 +111,8 @@ def print_table1(parallel_result, non_parallel_result):
         # 技术作业停站时间（中间站0）
         tech_stop = 0
 
-        # 会车方案：根据T周和τ值确定
-        if TAU_UNSIM + TAU_MEET <= t_period - t_down_total - t_up_total:
-            meet_plan = "站内会车"
-        else:
-            meet_plan = "站内会车"
+        # 会车方案：根据两端车站股道数选择（4种标准方案）
+        meet_plan = get_meet_plan(i)
 
         print(
             f"{section_name:^6} {'单线':^6} {'半自动':^10} {distance:^8} "
@@ -621,7 +644,7 @@ def save_to_xlsx(parallel_result, non_parallel_result, table2_rows):
             1: sec["section"], 2: "单线", 3: "半自动", 4: sec["distance"],
             5: sec["t_up"], 6: sec["t_down"], 7: T_START, 8: T_STOP,
             9: TAU_UNSIM, 10: TAU_MEET, 11: "", 12: "",
-            13: 0, 14: "站内会车", 15: sec["t_period"], 16: n_par_sec,
+            13: 0, 14: get_meet_plan(i), 15: sec["t_period"], 16: n_par_sec,
             17: EPSILON_PASSENGER, 18: N_PASSENGER,
             19: EPSILON_PICKUP, 20: n_pickup,
             21: "", 22: "", 23: "",
