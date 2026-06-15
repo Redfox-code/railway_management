@@ -1,0 +1,14 @@
+# 依赖
+node_modules/
+
+# 环境变量（含 API Key）
+.env
+
+# 识图脚本（含 API Key，勿提交）
+vision.js
+
+# Claude Code 本地配置
+.claude/
+
+# claude-vision-skill 上游仓库
+claude-vision-skill/
