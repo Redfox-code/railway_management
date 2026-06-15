@@ -295,12 +295,17 @@ def calc_train_schedule_with_occupancy(train, section_occ, depart_time):
 
             schedule["stations"].append(si)
 
-        # 记录本列车对各区间的占用
+        # 记录本列车对各区间的占用（含τ不/τ会缓冲）
         for i in range(N_STATIONS - 1):
             enter_t = schedule["stations"][i]["depart"]      # 从站i出发 = 进入区间i
             exit_t = schedule["stations"][i+1]["arrive"]      # 到达站i+1 = 离开区间i
             if enter_t is not None and exit_t is not None:
-                section_occ.setdefault(i, set()).add((enter_t, exit_t, train_id))
+                # 加入车站间隔时间:
+                # 出发前τ会: 对向列车需等τ会后才能进入同一区间
+                # 到达后τ不: 对向列车需等τ不后才能到达同一车站
+                eff_enter = enter_t - TAU_MEET
+                eff_exit = exit_t + TAU_UNSIM
+                section_occ.setdefault(i, set()).add((eff_enter, eff_exit, train_id))
 
     else:
         # B→A, 区间索引: B-e=5, e-d=4, d-c=3, c-b=2, b-a=1, a-A=0
@@ -351,13 +356,15 @@ def calc_train_schedule_with_occupancy(train, section_occ, depart_time):
 
             schedule["stations"].insert(0, si)
 
-        # 记录本列车对各区间的占用
+        # 记录本列车对各区间的占用（含τ不/τ会缓冲）
         for i in range(N_STATIONS - 1):
             # 上行方向: 从 i+1 站出发 → i 站到达，占用区间 i
             enter_t = schedule["stations"][i+1]["depart"]   # 从站i+1出发
             exit_t = schedule["stations"][i]["arrive"]       # 到达站i
             if enter_t is not None and exit_t is not None:
-                section_occ.setdefault(i, set()).add((enter_t, exit_t, train_id))
+                eff_enter = enter_t - TAU_MEET
+                eff_exit = exit_t + TAU_UNSIM
+                section_occ.setdefault(i, set()).add((eff_enter, eff_exit, train_id))
 
     return schedule, depart_time
 
