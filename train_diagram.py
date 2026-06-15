@@ -473,19 +473,19 @@ def draw_train_diagram(timetable, filename="train_diagram.png"):
         ls = line_style_map.get(train_type, "-")
         lw = line_width_map.get(train_type, 1.0)
 
-        times = []
-        ys = []
+        points = []
 
         for i, station_info in enumerate(train["stations"]):
             y = y_positions[i]
-            # 到达点
             if station_info["arrive"] is not None:
-                times.append(station_info["arrive"])
-                ys.append(y)
-            # 出发/通过点
+                points.append((station_info["arrive"], y))
             if station_info["depart"] is not None:
-                times.append(station_info["depart"])
-                ys.append(y)
+                points.append((station_info["depart"], y))
+
+        # 按时间排序，确保上行/下行运行线都正确向右延伸
+        points.sort(key=lambda p: p[0])
+        times = [p[0] for p in points]
+        ys = [p[1] for p in points]
 
         # 绘制运行线
         if len(times) >= 2:
