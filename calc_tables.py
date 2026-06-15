@@ -108,7 +108,7 @@ def print_table1(parallel_result, non_parallel_result):
     n_pickup = FREIGHT_DOWN["摘挂"] + FREIGHT_UP["摘挂"]
     n_fast = FREIGHT_DOWN["直达(空)"] + FREIGHT_UP["直达(重)"]
     print(f"  摘挂列车追加扣除: (ε摘挂-1) × n摘挂 = {EPSILON_PICKUP - 1} × {n_pickup} = {(EPSILON_PICKUP - 1) * n_pickup:.1f}")
-    print(f"  快货列车追加扣除: (ε快货-1) × n快货 = {EPSILON_FAST_FREIGHT - 1} × {n_fast} = {(EPSILON_FAST_FREIGHT - 1) * n_fast:.1f}")
+    print(f"  快货列车追加扣除: (ε快货-1) × n快货 = {EPSILON_FAST_FREIGHT - 1:.1f} × {n_fast} = {(EPSILON_FAST_FREIGHT - 1) * n_fast:.1f}")
     total_deduction = EPSILON_PASSENGER * N_PASSENGER + (EPSILON_PICKUP - 1) * n_pickup + (EPSILON_FAST_FREIGHT - 1) * n_fast
     n_non_parallel = n_parallel - total_deduction
     print(f"  总扣除: {total_deduction:.1f} 对")
@@ -493,7 +493,30 @@ def print_table2(rows):
 # 第三部分：主程序
 # ================================================================
 
+class Tee:
+    """同时输出到控制台和文件"""
+    def __init__(self, filepath):
+        self.file = open(filepath, "w", encoding="utf-8")
+        self.stdout = sys.stdout
+
+    def write(self, data):
+        self.stdout.write(data)
+        self.file.write(data)
+
+    def flush(self):
+        self.stdout.flush()
+        self.file.flush()
+
+    def close(self):
+        self.file.close()
+
+
 def main():
+    # 输出文件
+    output_file = "附表1和2_计算结果.txt"
+    tee = Tee(output_file)
+    sys.stdout = tee
+
     print("=" * 70)
     print("  A-B 区段运行图指标计算 — 附表1 & 附表2")
     print("=" * 70)
@@ -530,6 +553,11 @@ def main():
     print("\n" + "=" * 160)
     print("  计算完成！")
     print("=" * 160)
+
+    # 恢复stdout并关闭文件
+    sys.stdout = tee.stdout
+    tee.close()
+    print(f"\n  [OK] 结果已保存到: {output_file}")
 
 
 if __name__ == "__main__":
