@@ -6,6 +6,7 @@ node_modules/
 
 # 识图脚本（含 API Key，勿提交）
 vision.js
+vision.py
 
 # Claude Code 本地配置
 .claude/
