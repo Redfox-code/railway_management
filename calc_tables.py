@@ -542,249 +542,254 @@ def auto_width(ws, max_col, min_width=8, max_width=18):
 
 
 def save_to_xlsx(parallel_result, non_parallel_result, table2_rows):
-    """将附表1和附表2写入xlsx文件"""
+    """将附表1和附表2写入xlsx文件 — 按题目原表23列/18列精确格式"""
 
     wb = openpyxl.Workbook()
 
-    # ============ Sheet 1: 附表1 ============
+    # ================================================================
+    # Sheet 1: 附表1 — 23列 × (6区间 + 限制分析 + 非平行扣除)
+    # ================================================================
     ws1 = wb.active
     ws1.title = "附表1-通过能力"
+    N_COL1 = 23
 
     sections = parallel_result["section_details"]
     n_parallel = parallel_result["n_parallel"]
-
-    # 标题
-    ws1.merge_cells("A1:N1")
-    ws1.cell(row=1, column=1, value="附表1  A-B 区段区间通过能力计算表").font = TITLE_FONT
-    ws1.cell(row=1, column=1).alignment = CENTER
-
-    # 表头 — 两行
-    headers_r1 = ["站名", "正线数", "闭塞方法", "距离\n(km)",
-                  "区间运行时间 (min)", "", "", "",
-                  "车站间隔时间 (min)", "", "", "",
-                  "t技停\n(min)", "会车方案", "T周\n(min)", "N平行\n(对/天)"]
-    headers_r2 = ["", "", "", "",
-                  "上行", "下行", "t起", "t停",
-                  "τ不", "τ会", "τ空1", "τ空2",
-                  "", "", "", ""]
-
-    for j, h in enumerate(headers_r1, 1):
-        ws1.cell(row=2, column=j, value=h)
-    for j, h in enumerate(headers_r2, 1):
-        ws1.cell(row=3, column=j, value=h)
-
-    # 合并表头单元格
-    ws1.merge_cells("E2:H2")   # 区间运行时间
-    ws1.merge_cells("I2:L2")   # 车站间隔时间
-    ws1.merge_cells("A2:A3")
-    ws1.merge_cells("B2:B3")
-    ws1.merge_cells("C2:C3")
-    ws1.merge_cells("D2:D3")
-    ws1.merge_cells("M2:M3")
-    ws1.merge_cells("N2:N3")
-    ws1.merge_cells("O2:O3")
-    ws1.merge_cells("P2:P3")
-
-    style_header_row(ws1, 2, 16, fill=HEADER_FILL, font=HEADER_FONT_W)
-    style_header_row(ws1, 3, 16, fill=HEADER_FILL, font=HEADER_FONT_W)
-
-    # 数据行
-    for i, sec in enumerate(sections):
-        r = 4 + i
-        available_time = 1440 - T_MAINTENANCE
-        n_parallel_sec = available_time / sec["t_period"]
-
-        data = [
-            sec["section"], "单线", "半自动", sec["distance"],
-            sec["t_up"], sec["t_down"], T_START, T_STOP,
-            TAU_UNSIM, TAU_MEET, "—", "—",
-            0, "站内会车", sec["t_period"], round(n_parallel_sec, 1),
-        ]
-        for j, val in enumerate(data, 1):
-            ws1.cell(row=r, column=j, value=val)
-        style_data_row(ws1, r, 16)
-
-    # 限制区间分析
-    r = 4 + len(sections) + 1
-    restrictive = max(sections, key=lambda s: s["t_period"])
-    ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=16)
-    ws1.cell(row=r, column=1,
-             value=f"限制区间: {restrictive['section']} (T周={restrictive['t_period']} min)  |  "
-                   f"可用时间: 1440-{T_MAINTENANCE}={available_time} min  |  "
-                   f"N平行 = {available_time}/{restrictive['t_period']} = {n_parallel} 对/天")
-    ws1.cell(row=r, column=1).font = Font(name="微软雅黑", bold=True, size=10)
-
-    r += 2
     n_pickup = FREIGHT_DOWN["摘挂"] + FREIGHT_UP["摘挂"]
     n_fast = FREIGHT_DOWN["直达(空)"] + FREIGHT_UP["直达(重)"]
     total_ded = EPSILON_PASSENGER * N_PASSENGER + (EPSILON_PICKUP - 1) * n_pickup + (EPSILON_FAST_FREIGHT - 1) * n_fast
-    n_non = n_parallel - total_ded
+    n_non = int(n_parallel - total_ded)
 
-    ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=16)
-    ws1.cell(row=r, column=1, value="非平行运行图通过能力计算:").font = Font(name="微软雅黑", bold=True, size=10)
-    r += 1
-    details = [
-        f"旅客列车扣除: ε客×n客 = {EPSILON_PASSENGER}×{N_PASSENGER} = {EPSILON_PASSENGER * N_PASSENGER:.1f}",
-        f"摘挂列车追加扣除: (ε摘挂-1)×n摘挂 = {EPSILON_PICKUP-1:.1f}×{n_pickup} = {(EPSILON_PICKUP-1)*n_pickup:.1f}",
-        f"快货列车追加扣除: (ε快货-1)×n快货 = {EPSILON_FAST_FREIGHT-1:.1f}×{n_fast} = {(EPSILON_FAST_FREIGHT-1)*n_fast:.1f}",
-        f"总扣除: {total_ded:.1f} 对  |  N非平行 = {n_parallel} - {total_ded:.1f} = {n_non:.1f} → 取整 {int(n_non)} 对/天",
+    # -- 标题 --
+    ws1.merge_cells(start_row=1, start_column=1, end_row=1, end_column=N_COL1)
+    c = ws1.cell(row=1, column=1, value="A-B 区段区间通过能力计算表         附表 1")
+    c.font = TITLE_FONT; c.alignment = CENTER
+
+    # -- 表头 Row 2 (第1层分类) --
+    r2_labels = {
+        1: "站名", 2: "正线数", 3: "闭塞方法", 4: "区间距离",
+    }
+    # 合并区间运行时间 (5-8), 车站间隔时间 (9-12)
+    merges_r2 = [
+        (5, 8, "区间运行时间"), (9, 12, "车站间隔时间\n（分）"),
+        (17, 18, "旅客列车"), (19, 20, "摘挂列车"),
     ]
-    for d in details:
-        ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=16)
+    singles_r2 = {
+        13: "技术作业\n停站时间", 14: "会车方案", 15: "T周", 16: "平行图\n最大能力",
+        21: "n非货", 22: "n非", 23: "附记",
+    }
+
+    for col, label in r2_labels.items():
+        ws1.cell(row=2, column=col, value=label)
+    for sc, ec, label in merges_r2:
+        ws1.merge_cells(start_row=2, start_column=sc, end_row=2, end_column=ec)
+        ws1.cell(row=2, column=sc, value=label)
+    for col, label in singles_r2.items():
+        ws1.cell(row=2, column=col, value=label)
+
+    # -- 表头 Row 3 (第2层细分) --
+    r3_data = {
+        1: " ", 2: " ", 3: " ", 4: " ",
+        5: "上", 6: "下", 7: "t起", 8: "t停",
+        9: "τ不", 10: "τ会", 11: " ", 12: " ",
+        13: " ", 14: " ", 15: " ", 16: " ",
+        17: "ε客", 18: "n客", 19: "ε摘", 20: "n摘",
+        21: " ", 22: " ", 23: " ",
+    }
+    for col, label in r3_data.items():
+        ws1.cell(row=3, column=col, value=label)
+
+    # -- 表头 Row 4 (列号 1-23) --
+    for col in range(1, N_COL1 + 1):
+        ws1.cell(row=4, column=col, value=col)
+
+    # 合并纵跨行
+    for col in [1, 2, 3, 4, 13, 14, 15, 16, 21, 22, 23]:
+        ws1.merge_cells(start_row=2, start_column=col, end_row=4, end_column=col)
+
+    # 样式表头
+    for r in [2, 3, 4]:
+        style_header_row(ws1, r, N_COL1, fill=HEADER_FILL, font=HEADER_FONT_W)
+
+    # -- 数据行 (6个区间) --
+    for i, sec in enumerate(sections):
+        r = 5 + i
+        avail = 1440 - T_MAINTENANCE
+        n_par_sec = round(avail / sec["t_period"], 1)
+
+        data = {
+            1: sec["section"], 2: "单线", 3: "半自动", 4: sec["distance"],
+            5: sec["t_up"], 6: sec["t_down"], 7: T_START, 8: T_STOP,
+            9: TAU_UNSIM, 10: TAU_MEET, 11: "", 12: "",
+            13: 0, 14: "站内会车", 15: sec["t_period"], 16: n_par_sec,
+            17: EPSILON_PASSENGER, 18: N_PASSENGER,
+            19: EPSILON_PICKUP, 20: n_pickup,
+            21: "", 22: "", 23: "",
+        }
+        for col, val in data.items():
+            ws1.cell(row=r, column=col, value=val)
+        style_data_row(ws1, r, N_COL1)
+
+    # 限制区间行
+    r = 5 + len(sections)
+    restrictive = max(sections, key=lambda s: s["t_period"])
+    for col in range(1, N_COL1 + 1):
+        ws1.cell(row=r, column=col, value="").border = THIN_BORDER
+    ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=N_COL1)
+    ws1.cell(row=r, column=1,
+             value=f"限制区间: {restrictive['section']}  T周={restrictive['t_period']} min  "
+                   f"可用时间=1440-{T_MAINTENANCE}={1440-T_MAINTENANCE} min  "
+                   f"N平行={1440-T_MAINTENANCE}/{restrictive['t_period']}={n_parallel} 对/天")
+    ws1.cell(row=r, column=1).font = Font(name="微软雅黑", bold=True, size=10)
+    ws1.cell(row=r, column=1).alignment = CENTER
+
+    # 非平行扣除行
+    r += 2
+    ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=N_COL1)
+    ws1.cell(row=r, column=1, value="非平行运行图通过能力计算").font = Font(name="微软雅黑", bold=True, size=10)
+    r += 1
+    deductions = [
+        f"ε客={EPSILON_PASSENGER}  n客={N_PASSENGER}  扣除: {EPSILON_PASSENGER}×{N_PASSENGER}={EPSILON_PASSENGER*N_PASSENGER:.1f}",
+        f"ε摘={EPSILON_PICKUP}  n摘={n_pickup}  追加扣除: ({EPSILON_PICKUP}-1)×{n_pickup}={(EPSILON_PICKUP-1)*n_pickup:.1f}",
+        f"ε快货={EPSILON_FAST_FREIGHT}  n快货={n_fast}  追加扣除: ({EPSILON_FAST_FREIGHT}-1)×{n_fast}={(EPSILON_FAST_FREIGHT-1)*n_fast:.1f}",
+        f"总扣除={total_ded:.1f} 对   N非平行={n_parallel}-{total_ded:.1f}={n_parallel-total_ded:.1f}  取整={n_non} 对/天",
+    ]
+    for d in deductions:
+        ws1.merge_cells(start_row=r, start_column=1, end_row=r, end_column=N_COL1)
         ws1.cell(row=r, column=1, value=d).font = DATA_FONT
         r += 1
 
-    auto_width(ws1, 16)
+    auto_width(ws1, N_COL1, min_width=5, max_width=14)
 
-    # ============ Sheet 2: 附表2 ============
+    # ================================================================
+    # Sheet 2: 附表2 — 18列 × (车次行 + 合计 + 指标汇总)
+    # ================================================================
     ws2 = wb.create_sheet("附表2-质量指标")
+    N_COL2 = 18
 
-    # 标题
-    ws2.merge_cells("A1:R1")
-    ws2.cell(row=1, column=1, value="附表2  A-B 区段运行图质量指标计算表").font = TITLE_FONT
-    ws2.cell(row=1, column=1).alignment = CENTER
+    # -- 标题 --
+    ws2.merge_cells(start_row=1, start_column=1, end_row=1, end_column=N_COL2)
+    c = ws2.cell(row=1, column=1, value="A-B 区段运行图质量指标计算表         附表 2")
+    c.font = TITLE_FONT; c.alignment = CENTER
 
-    # 表头
-    ws2.merge_cells("A2:G2")
-    ws2.cell(row=2, column=1, value="下行方向")
-    ws2.merge_cells("H2:N2")
-    ws2.cell(row=2, column=8, value="上行方向")
-    ws2.merge_cells("O2:R2")
-    ws2.cell(row=2, column=15, value="机车")
+    # -- 表头 Row 2 (三大区域) --
+    ws2.merge_cells(start_row=2, start_column=1, end_row=2, end_column=7)
+    ws2.cell(row=2, column=1, value="下 行 方 向")
+    ws2.merge_cells(start_row=2, start_column=8, end_row=2, end_column=14)
+    ws2.cell(row=2, column=8, value="上 行 方 向")
+    ws2.merge_cells(start_row=2, start_column=15, end_row=2, end_column=18)
+    ws2.cell(row=2, column=15, value="机  车")
 
-    sub_headers = [
-        "车次", "由A发", "到B", "在途\n(min)", "运行\n(min)", "停站\n(min)", "列公里\n(km)",
-        "车次", "由B发", "到A", "在途\n(min)", "运行\n(min)", "停站\n(min)", "列公里\n(km)",
-        "B站停留\n(min)", "牵引车次", "A站出发", "A站停留\n(min)",
-    ]
-    for j, h in enumerate(sub_headers, 1):
-        ws2.cell(row=3, column=j, value=h)
+    # -- 表头 Row 3 (次级) --
+    ws2.merge_cells(start_row=3, start_column=2, end_row=3, end_column=6)
+    ws2.cell(row=3, column=2, value="时    间")
+    ws2.merge_cells(start_row=3, start_column=9, end_row=3, end_column=13)
+    ws2.cell(row=3, column=9, value="时    间")
 
-    style_header_row(ws2, 2, 18, fill=HEADER_FILL, font=HEADER_FONT_W)
-    style_header_row(ws2, 3, 18, fill=HEADER_FILL, font=HEADER_FONT_W)
+    r3_singles = {
+        1: "车次", 7: "列车公里",
+        8: "车次", 14: "列车公里",
+        15: "在B站\n停留时间", 16: "从A站\n牵引车次", 17: "从A站\n出发时间", 18: "在A站\n停留时间",
+    }
+    for col, label in r3_singles.items():
+        ws2.cell(row=3, column=col, value=label)
 
-    # 数据行
+    # -- 表头 Row 4 (时间细分) --
+    r4_data = {
+        1: " ", 2: "由A发", 3: "到n", 4: "在途",
+        7: " ",
+        8: " ", 9: "由B发", 10: "到A", 11: "在途",
+        14: " ",
+        15: " ", 16: " ", 17: " ", 18: " ",
+    }
+    for col, label in r4_data.items():
+        ws2.cell(row=4, column=col, value=label)
+    # "其中" 合并 5-6
+    ws2.merge_cells(start_row=4, start_column=5, end_row=4, end_column=6)
+    ws2.cell(row=4, column=5, value="其  中")
+    ws2.merge_cells(start_row=4, start_column=12, end_row=4, end_column=13)
+    ws2.cell(row=4, column=12, value="其  中")
+
+    # -- 表头 Row 5 (运行/停站) --
+    r5_data = {
+        5: "运行", 6: "停站", 12: "运行", 13: "停站",
+    }
+    for col in range(1, N_COL2 + 1):
+        ws2.cell(row=5, column=col, value=r5_data.get(col, " "))
+
+    # 合并纵跨行
+    for col in [1, 7, 8, 14, 15, 16, 17, 18]:
+        ws2.merge_cells(start_row=3, start_column=col, end_row=5, end_column=col)
+
+    # -- 表头 Row 6 (列号) --
+    for col in range(1, N_COL2 + 1):
+        ws2.cell(row=6, column=col, value=col)
+
+    # 样式表头
+    HEADER_ROW_START = 2
+    for r in range(HEADER_ROW_START, 7):
+        style_header_row(ws2, r, N_COL2, fill=HEADER_FILL, font=HEADER_FONT_W)
+
+    # -- 数据行 --
     total_d_run, total_d_stop, total_d_km = 0, 0, 0
     total_u_run, total_u_stop, total_u_km = 0, 0, 0
     n_down, n_up = 0, 0
 
+    def t_str(val):
+        if val is None: return "—"
+        return f"{int(val)//60:02d}:{int(val)%60:02d}"
+
+    def vd(val):
+        return val if val is not None else "—"
+
+    DATA_START = 7
     for i, row in enumerate(table2_rows):
-        r = 4 + i
-
-        def t_str(val):
-            if val is None:
-                return "—"
-            return f"{int(val)//60:02d}:{int(val)%60:02d}"
-
-        def v_or_dash(val):
-            return val if val is not None else "—"
-
-        data = [
-            v_or_dash(row["down_id"]),
-            t_str(row["down_depart_a"]),
-            t_str(row["down_arrive_b"]),
-            v_or_dash(row["down_travel"]),
-            v_or_dash(row["down_run"]),
-            v_or_dash(row["down_stop"]),
-            v_or_dash(row["down_km"]),
-            v_or_dash(row["up_id"]),
-            t_str(row["up_depart_b"]),
-            t_str(row["up_arrive_a"]),
-            v_or_dash(row["up_travel"]),
-            v_or_dash(row["up_run"]),
-            v_or_dash(row["up_stop"]),
-            v_or_dash(row["up_km"]),
-            v_or_dash(row["loco_b_stay"]),
-            v_or_dash(row["loco_tow"]),
-            t_str(row["loco_a_depart"]),
-            v_or_dash(row["loco_a_stay"]),
-        ]
-        for j, val in enumerate(data, 1):
-            ws2.cell(row=r, column=j, value=val)
-        style_data_row(ws2, r, 18)
+        r = DATA_START + i
+        data = {
+            1: vd(row["down_id"]), 2: t_str(row["down_depart_a"]), 3: t_str(row["down_arrive_b"]),
+            4: vd(row["down_travel"]), 5: vd(row["down_run"]), 6: vd(row["down_stop"]), 7: vd(row["down_km"]),
+            8: vd(row["up_id"]), 9: t_str(row["up_depart_b"]), 10: t_str(row["up_arrive_a"]),
+            11: vd(row["up_travel"]), 12: vd(row["up_run"]), 13: vd(row["up_stop"]), 14: vd(row["up_km"]),
+            15: vd(row["loco_b_stay"]), 16: vd(row["loco_tow"]),
+            17: t_str(row["loco_a_depart"]), 18: vd(row["loco_a_stay"]),
+        }
+        for col, val in data.items():
+            ws2.cell(row=r, column=col, value=val)
+        style_data_row(ws2, r, N_COL2)
 
         if row["down_run"]:
-            total_d_run += row["down_run"]
-            total_d_stop += row["down_stop"]
-            total_d_km += row["down_km"]
-            n_down += 1
+            total_d_run += row["down_run"]; total_d_stop += row["down_stop"]; total_d_km += row["down_km"]; n_down += 1
         if row["up_run"]:
-            total_u_run += row["up_run"]
-            total_u_stop += row["up_stop"]
-            total_u_km += row["up_km"]
-            n_up += 1
+            total_u_run += row["up_run"]; total_u_stop += row["up_stop"]; total_u_km += row["up_km"]; n_up += 1
 
     # 合计行
-    r = 4 + len(table2_rows)
-    total_data = [
-        "合计", "—", "—", total_d_run + total_d_stop, total_d_run, total_d_stop, total_d_km,
-        "合计", "—", "—", total_u_run + total_u_stop, total_u_run, total_u_stop, total_u_km,
-        "—", "—", "—", "—",
-    ]
-    for j, val in enumerate(total_data, 1):
-        ws2.cell(row=r, column=j, value=val)
-    style_data_row(ws2, r, 18)
-    for j in range(1, 19):
-        ws2.cell(row=r, column=j).font = Font(name="微软雅黑", bold=True, size=10)
+    r = DATA_START + len(table2_rows)
+    total_data = {
+        1: "合计", 2: "—", 3: "—", 4: total_d_run + total_d_stop, 5: total_d_run, 6: total_d_stop, 7: total_d_km,
+        8: "合计", 9: "—", 10: "—", 11: total_u_run + total_u_stop, 12: total_u_run, 13: total_u_stop, 14: total_u_km,
+        15: "—", 16: "—", 17: "—", 18: "—",
+    }
+    for col, val in total_data.items():
+        ws2.cell(row=r, column=col, value=val)
+    style_data_row(ws2, r, N_COL2)
+    for col in range(1, N_COL2 + 1):
+        ws2.cell(row=r, column=col).font = Font(name="微软雅黑", bold=True, size=10)
 
-    # 速度指标汇总
-    r += 3
-    total_km = total_d_km + total_u_km
-    total_run = total_d_run + total_u_run
-    total_travel = total_d_run + total_d_stop + total_u_run + total_u_stop
-    tech_d = (total_d_km / total_d_run * 60) if total_d_run else 0
-    travel_d = (total_d_km / (total_d_run + total_d_stop) * 60) if (total_d_run + total_d_stop) else 0
-    tech_u = (total_u_km / total_u_run * 60) if total_u_run else 0
-    travel_u = (total_u_km / (total_u_run + total_u_stop) * 60) if (total_u_run + total_u_stop) else 0
+    # 注释
+    r += 1
+    ws2.merge_cells(start_row=r, start_column=1, end_row=r, end_column=N_COL2)
+    ws2.cell(row=r, column=1, value="注：每一行上行方向车次按机车折返交路的顺序填写").font = Font(name="微软雅黑", size=9, italic=True)
 
-    summary_headers = ["指标", "下行", "上行", "合计"]
-    summary_data = [
-        ["统计列车数", n_down, n_up, n_down + n_up],
-        ["技术速度 (km/h)", round(tech_d, 1), round(tech_u, 1), round(total_km / total_run * 60, 1) if total_run else 0],
-        ["旅行速度 (km/h)", round(travel_d, 1), round(travel_u, 1), round(total_km / total_travel * 60, 1) if total_travel else 0],
-        ["速度系数", round(travel_d / tech_d, 4) if tech_d else 0, round(travel_u / tech_u, 4) if tech_u else 0,
-         round((total_km / total_travel * 60) / (total_km / total_run * 60), 4) if total_run and total_travel else 0],
-    ]
-    for j, h in enumerate(summary_headers, 1):
-        ws2.cell(row=r, column=j, value=h)
-    style_header_row(ws2, r, 4, fill=HEADER_FILL, font=HEADER_FONT_W)
-    for i, sd in enumerate(summary_data):
-        for j, val in enumerate(sd, 1):
-            ws2.cell(row=r + 1 + i, column=j, value=val)
-        style_data_row(ws2, r + 1 + i, 4)
-
-    # 机车指标
-    r += len(summary_data) + 2
-    total_b = sum(row["loco_b_stay"] for row in table2_rows if row["loco_b_stay"])
-    total_a = sum(row["loco_a_stay"] for row in table2_rows if row["loco_a_stay"])
-    n_cycles = len([row for row in table2_rows if row["loco_b_stay"]])
-
-    loco_headers = ["机车指标", "数值"]
-    loco_data = [
-        ["机车交路数", n_cycles],
-        ["平均B站停留 (min)", round(total_b / n_cycles, 0) if n_cycles else 0],
-        ["平均A站停留 (min)", round(total_a / n_cycles, 0) if n_cycles else 0],
-    ]
-    if n_cycles > 0:
-        avg_cycle = (total_travel / (n_down + n_up)) * 2 + (total_b + total_a) / n_cycles
-        daily_km_per = (1440 / avg_cycle) * TOTAL_DISTANCE * 2
-        loco_data.append(["平均周转时间 (min)", round(avg_cycle, 0)])
-        loco_data.append(["机车日车公里-单台 (km)", round(daily_km_per, 0)])
-        loco_data.append(["机车日车公里-总 (km)", round(daily_km_per * N_LOCOMOTIVES, 0)])
-
-    for j, h in enumerate(loco_headers, 1):
-        ws2.cell(row=r, column=j, value=h)
-    style_header_row(ws2, r, 2, fill=HEADER_FILL, font=HEADER_FONT_W)
-    for i, ld in enumerate(loco_data):
-        for j, val in enumerate(ld, 1):
-            ws2.cell(row=r + 1 + i, column=j, value=val)
-        style_data_row(ws2, r + 1 + i, 2)
-
-    auto_width(ws2, 18)
+    auto_width(ws2, N_COL2, min_width=6, max_width=16)
 
     # 保存
     filename = "附表1和2_计算结果.xlsx"
-    wb.save(filename)
+    try:
+        wb.save(filename)
+    except PermissionError:
+        import time
+        filename = f"附表1和2_计算结果_{int(time.time())}.xlsx"
+        wb.save(filename)
     print(f"  [OK] Excel文件已保存到: {filename}")
     return filename
 
