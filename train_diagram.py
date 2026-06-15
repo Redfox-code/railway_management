@@ -222,187 +222,236 @@ def calc_non_parallel_capacity(n_parallel):
 # 第五部分：列车运行图铺画
 # ============================================================
 
+def calc_train_schedule_with_occupancy(train, section_occ, depart_time):
+    """
+    计算单列车在各站的到发时刻 — 带区间占用约束。
+    单线半自动闭塞：任一区间同一时刻只能被一列车占用。
+    上下行列车只能在车站交会，不能在区间内交叉。
+
+    section_occ: dict, key=section_idx, value=set of (enter_time, exit_time, train_id)
+    depart_time: 从始发站出发的时刻（可能因冲突被推迟）
+    返回: (schedule, actual_depart_time)
+    """
+    dir = train["dir"]
+    train_id = train["id"]
+    train_type = train["type"]
+
+    schedule = {"id": train_id, "type": train_type, "dir": dir, "stations": []}
+    current_time = depart_time
+
+    if dir == "down":
+        # A→B, 区间编号 0..5 (A-a=0, a-b=1, b-c=2, c-d=3, d-e=4, e-B=5)
+        for i in range(N_STATIONS):
+            si = {"station": STATIONS[i], "arrive": None, "depart": None}
+
+            if i == 0:  # 始发站 A
+                si["depart"] = current_time
+                si["arrive"] = None
+            else:
+                section_idx = i - 1  # 刚经过的区间
+                t_run = DOWN_RUNNING[section_idx]
+
+                # 计算到达下一站时间（无等待）
+                raw_arrive = current_time + t_run + T_START
+
+                # 检查该区间是否有冲突
+                enter_t = current_time
+                exit_t = raw_arrive
+
+                # 查找区间占用中的冲突
+                conflict_delay = 0
+                if section_idx in section_occ:
+                    for (occ_enter, occ_exit, occ_id) in section_occ[section_idx]:
+                        if occ_id == train_id:
+                            continue
+                        # 时间重叠检测
+                        if enter_t < occ_exit and exit_t > occ_enter:
+                            # 冲突！需要等区间清空
+                            # 延迟到占用结束后进入
+                            conflict_delay = max(conflict_delay, occ_exit - enter_t)
+
+                if conflict_delay > 0:
+                    # 在上一站等待，更新上一站出发时间
+                    current_time += conflict_delay
+                    schedule["stations"][i-1]["depart"] = current_time
+                    raw_arrive = current_time + t_run + T_START
+
+                current_time = raw_arrive
+                si["arrive"] = current_time
+
+                # 停站时间
+                if train_type == "旅客":
+                    stop_time = STOP_PASSENGER
+                elif train_type == "摘挂":
+                    stop_time = STOP_PICKUP
+                else:
+                    stop_time = 0 if STATIONS[i] in ["a", "b", "c", "d", "e"] else STOP_FREIGHT
+
+                if i == N_STATIONS - 1:
+                    si["depart"] = None
+                else:
+                    current_time += stop_time + T_STOP
+                    si["depart"] = current_time
+
+            schedule["stations"].append(si)
+
+        # 记录本列车对各区间的占用
+        for i in range(N_STATIONS - 1):
+            enter_t = schedule["stations"][i]["depart"]      # 从站i出发 = 进入区间i
+            exit_t = schedule["stations"][i+1]["arrive"]      # 到达站i+1 = 离开区间i
+            if enter_t is not None and exit_t is not None:
+                section_occ.setdefault(i, set()).add((enter_t, exit_t, train_id))
+
+    else:
+        # B→A, 区间索引: B-e=5, e-d=4, d-c=3, c-b=2, b-a=1, a-A=0
+        for i in range(N_STATIONS - 1, -1, -1):
+            si = {"station": STATIONS[i], "arrive": None, "depart": None}
+
+            if i == N_STATIONS - 1:  # 始发站 B
+                si["depart"] = current_time
+                si["arrive"] = None
+            else:
+                section_idx = i  # 上行经过的区间 (从 i+1 站到 i 站)
+                t_run = UP_RUNNING[section_idx]
+
+                raw_arrive = current_time + t_run + T_START
+
+                enter_t = current_time
+                exit_t = raw_arrive
+
+                conflict_delay = 0
+                if section_idx in section_occ:
+                    for (occ_enter, occ_exit, occ_id) in section_occ[section_idx]:
+                        if occ_id == train_id:
+                            continue
+                        if enter_t < occ_exit and exit_t > occ_enter:
+                            conflict_delay = max(conflict_delay, occ_exit - enter_t)
+
+                if conflict_delay > 0:
+                    current_time += conflict_delay
+                    # 回写上一站出发时间（上行中上一站为i+1，当前在schedule索引0处）
+                    schedule["stations"][0]["depart"] = current_time
+                    raw_arrive = current_time + t_run + T_START
+
+                current_time = raw_arrive
+                si["arrive"] = current_time
+
+                if train_type == "旅客":
+                    stop_time = STOP_PASSENGER
+                elif train_type == "摘挂":
+                    stop_time = STOP_PICKUP
+                else:
+                    stop_time = 0 if STATIONS[i] in ["a", "b", "c", "d", "e"] else STOP_FREIGHT
+
+                if i == 0:
+                    si["depart"] = None
+                else:
+                    current_time += stop_time + T_STOP
+                    si["depart"] = current_time
+
+            schedule["stations"].insert(0, si)
+
+        # 记录本列车对各区间的占用
+        for i in range(N_STATIONS - 1):
+            # 上行方向: 从 i+1 站出发 → i 站到达，占用区间 i
+            enter_t = schedule["stations"][i+1]["depart"]   # 从站i+1出发
+            exit_t = schedule["stations"][i]["arrive"]       # 到达站i
+            if enter_t is not None and exit_t is not None:
+                section_occ.setdefault(i, set()).add((enter_t, exit_t, train_id))
+
+    return schedule, depart_time
+
+
 def generate_timetable(parallel_result, non_parallel_result):
     """
-    生成完整的列车运行时刻表
-    铺画所有列车的运行线
+    生成完整的列车运行时刻表 — 含单线区间占用冲突检测。
+    调度顺序：旅客列车 → 摘挂列车 → 区段/直达货物列车
     """
-    n_freight_pairs = non_parallel_result["n_non_parallel"]
+    section_occ = {}  # section_idx -> set of (enter, exit, train_id)
 
-    # 先用旅客列车占位
-    passenger_slots = []
+    # 1. 旅客列车（固定时刻，优先铺画）
+    timetable = []
     for pt in PASSENGER_TRAINS:
-        passenger_slots.append({
-            "id": pt["id"],
-            "type": "旅客",
-            "dir": pt["dir"],
-            "depart_time": pt["depart"],
+        train = {"id": pt["id"], "type": "旅客", "dir": pt["dir"]}
+        schedule, _ = calc_train_schedule_with_occupancy(train, section_occ, pt["depart"])
+        timetable.append(schedule)
+
+    # 2. 摘挂列车
+    pickup_specs = []
+    # 下行摘挂
+    pickup_down_times = [6*60+30, 14*60+30]
+    for i in range(FREIGHT_DOWN["摘挂"]):
+        pickup_specs.append({
+            "id": f"4003{i+5}", "type": "摘挂", "dir": "down",
+            "depart_time": pickup_down_times[i % len(pickup_down_times)],
         })
-
-    # 计算货物列车可用的时间窗口
-    # 旅客列车分布在: 下行 9:20, 17:20; 上行 13:10, 21:00
-    # 天窗: 假设 0:00-1:00
-    occupied_windows = [
-        (9*60+20 - 15, 9*60+20 + 60),    # K775 前后缓冲
-        (17*60+20 - 15, 17*60+20 + 60),  # K777 前后缓冲
-        (13*60+10 - 15, 13*60+10 + 60),  # K776 前后缓冲
-        (21*60+0 - 15, 21*60+0 + 60),    # K778 前后缓冲
-        (0, T_MAINTENANCE),               # 天窗
-    ]
-
-    # 为摘挂列车生成时刻
-    pickup_trains = []
-    # 下行摘挂：安排在旅客列车之间
-    pickup_down_times = [6*60+30, 14*60+30]  # 6:30, 14:30
-    for i, dt in enumerate(pickup_down_times[:FREIGHT_DOWN["摘挂"]]):
-        pickup_trains.append({
-            "id": f"4003{i+5}",
-            "type": "摘挂",
-            "dir": "down",
-            "depart_time": dt,
-        })
-
     # 上行摘挂
     pickup_up_times = [10*60+30, 18*60+30]
-    for i, dt in enumerate(pickup_up_times[:FREIGHT_UP["摘挂"]]):
-        pickup_trains.append({
-            "id": f"4004{i+5}",
-            "type": "摘挂",
-            "dir": "up",
-            "depart_time": dt,
+    for i in range(FREIGHT_UP["摘挂"]):
+        pickup_specs.append({
+            "id": f"4004{i+5}", "type": "摘挂", "dir": "up",
+            "depart_time": pickup_up_times[i % len(pickup_up_times)],
         })
 
-    # 为直达/区段货物列车生成时刻（均匀分布）
+    for ps in pickup_specs:
+        train = {"id": ps["id"], "type": ps["type"], "dir": ps["dir"]}
+        schedule, _ = calc_train_schedule_with_occupancy(train, section_occ, ps["depart_time"])
+        timetable.append(schedule)
+
+    # 3. 区段/直达货物列车 — 均匀排布，检测冲突
     remaining_down = FREIGHT_DOWN["直达(空)"] + FREIGHT_DOWN["区段"]
     remaining_up = FREIGHT_UP["直达(重)"] + FREIGHT_UP["区段"]
 
-    # 下行货物列车时刻
-    freight_down_trains = []
-    # 从天窗后开始，均匀分布
-    available_start = T_MAINTENANCE + 10  # 1:10
-    available_end = 23*60 + 30  # 23:30
-    interval = (available_end - available_start) / max(remaining_down, 1)
-
+    down_specs = []
+    start_t = T_MAINTENANCE + 10
+    end_t = 23*60 + 30
+    interval = (end_t - start_t) / max(remaining_down, 1)
     for i in range(remaining_down):
-        t = available_start + i * interval
-        freight_down_trains.append({
-            "id": f"3000{i+1}",
-            "type": "区段" if i < FREIGHT_DOWN["区段"] else "直达",
-            "dir": "down",
-            "depart_time": int(t),
+        t = int(start_t + i * interval)
+        down_specs.append({
+            "id": f"3000{i+1}", "type": "区段" if i < FREIGHT_DOWN["区段"] else "直达",
+            "dir": "down", "depart_time": t,
         })
 
-    # 上行货物列车时刻
-    freight_up_trains = []
+    up_specs = []
     for i in range(remaining_up):
-        t = available_start + interval/2 + i * interval
-        if t > available_end:
-            t = available_start + (i - remaining_up/2) * interval
-        freight_up_trains.append({
-            "id": f"3000{i+11}",
-            "type": "区段" if i < FREIGHT_UP["区段"] else "直达",
-            "dir": "up",
-            "depart_time": int(t),
+        t = int(start_t + interval/2 + i * interval)
+        if t > end_t:
+            t = int(start_t + (i - remaining_up/2) * interval)
+        up_specs.append({
+            "id": f"1000{i+2}", "type": "区段" if i < FREIGHT_UP["区段"] else "直达",
+            "dir": "up", "depart_time": t,
         })
 
-    all_trains = passenger_slots + pickup_trains + freight_down_trains + freight_up_trains
+    # 交替调度下行和上行（避免一方全部占满区间）
+    all_freight = []
+    max_f = max(len(down_specs), len(up_specs))
+    for i in range(max_f):
+        if i < len(down_specs):
+            all_freight.append(down_specs[i])
+        if i < len(up_specs):
+            all_freight.append(up_specs[i])
 
-    # 为每列车计算各站到发时刻
-    timetable = []
-    for train in all_trains:
-        schedule = calc_train_schedule(train)
+    for fs in all_freight:
+        train = {"id": fs["id"], "type": fs["type"], "dir": fs["dir"]}
+        # 尝试从初始时刻出发，如遇冲突自动顺延
+        schedule, actual_dep = calc_train_schedule_with_occupancy(
+            train, section_occ, fs["depart_time"])
         timetable.append(schedule)
 
     return timetable
 
 
 def calc_train_schedule(train):
-    """计算单列车在各站的到发时刻"""
-    dir = train["dir"]
-    depart_time = train["depart_time"]  # 从始发站出发时刻
-
-    schedule = {
-        "id": train["id"],
-        "type": train["type"],
-        "dir": dir,
-        "stations": [],
-    }
-
-    current_time = depart_time
-
-    if dir == "down":
-        # A→B 方向
-        for i in range(N_STATIONS):
-            station_info = {
-                "station": STATIONS[i],
-                "arrive": None,
-                "depart": None,
-            }
-
-            if i == 0:  # 始发站 A
-                station_info["depart"] = current_time
-                station_info["arrive"] = None  # 始发
-            else:
-                # 到达时刻 = 前一站出发 + 区间运行 + 起停附加
-                t_run = DOWN_RUNNING[i-1]
-                current_time += t_run + T_START  # 起车附加
-                station_info["arrive"] = current_time
-
-                # 停站时间
-                if train["type"] == "旅客":
-                    stop_time = STOP_PASSENGER
-                elif train["type"] == "摘挂":
-                    stop_time = STOP_PICKUP
-                else:
-                    # 货物列车在技术站停
-                    if STATIONS[i] in ["a", "b", "c", "d", "e"]:
-                        stop_time = 0  # 中间站通过
-                    else:
-                        stop_time = STOP_FREIGHT
-
-                if i == N_STATIONS - 1:  # 终到站 B
-                    station_info["depart"] = None
-                else:
-                    current_time += stop_time + T_STOP
-                    station_info["depart"] = current_time
-
-            schedule["stations"].append(station_info)
-    else:
-        # B→A 方向（上行）
-        for i in range(N_STATIONS - 1, -1, -1):
-            station_info = {
-                "station": STATIONS[i],
-                "arrive": None,
-                "depart": None,
-            }
-
-            if i == N_STATIONS - 1:  # 始发站 B
-                station_info["depart"] = current_time
-                station_info["arrive"] = None
-            else:
-                t_run = UP_RUNNING[i]
-                current_time += t_run + T_START
-                station_info["arrive"] = current_time
-
-                if train["type"] == "旅客":
-                    stop_time = STOP_PASSENGER
-                elif train["type"] == "摘挂":
-                    stop_time = STOP_PICKUP
-                else:
-                    if STATIONS[i] in ["a", "b", "c", "d", "e"]:
-                        stop_time = 0
-                    else:
-                        stop_time = STOP_FREIGHT
-
-                if i == 0:  # 终到站 A
-                    station_info["depart"] = None
-                else:
-                    current_time += stop_time + T_STOP
-                    station_info["depart"] = current_time
-
-            # 插入到列表开头保持 A→B 顺序
-            schedule["stations"].insert(0, station_info)
-
+    """
+    兼容旧接口：不做区间冲突检测，直接计算单列车时刻。
+    供 calc_tables.py 等外部调用。
+    """
+    empty_occ = {}
+    depart_time = train.get("depart_time", train.get("depart", 0))
+    schedule, _ = calc_train_schedule_with_occupancy(
+        {"id": train.get("id", ""), "type": train.get("type", "区段"), "dir": train.get("dir", "down")},
+        empty_occ, depart_time)
     return schedule
 
 
