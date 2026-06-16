@@ -54,7 +54,7 @@ T_STOP = 1
 T_QITING = T_START + T_STOP  # 3 min
 
 # 车站间隔时间 (min) — 不同时到达/会车间隔
-TAU_UNSIM = 4   # 不同时到达间隔 τ不
+TAU_UNSIM = 5   # 不同时到达间隔 τ不
 TAU_MEET = 3    # 会车间隔 τ会
 TAU_STOP = 2    # 停车间隔
 
