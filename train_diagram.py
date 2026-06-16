@@ -99,7 +99,7 @@ N_FREIGHT = max(TOTAL_FREIGHT_DOWN, TOTAL_FREIGHT_UP)  # 取大值作为对数
 # 扣除系数
 EPSILON_PASSENGER = 1.3   # ε客
 EPSILON_FAST_FREIGHT = 1.6  # ε货（快货）
-EPSILON_PICKUP = 1.5      # ε摘挂（追加扣除）
+EPSILON_PICKUP = 1.6      # ε摘挂（追加扣除）
 
 # 货运机车数量
 N_LOCOMOTIVES = 4
@@ -194,11 +194,11 @@ def calc_non_parallel_capacity(n_parallel):
     deduction_passenger = EPSILON_PASSENGER * N_PASSENGER
 
     # 摘挂列车追加扣除
-    n_pickup = FREIGHT_DOWN["摘挂"] + FREIGHT_UP["摘挂"]
+    n_pickup = max(FREIGHT_DOWN["摘挂"], FREIGHT_UP["摘挂"])  # 1对
     deduction_pickup = (EPSILON_PICKUP - 1) * n_pickup
 
-    # 快货列车追加扣除（这里直达和区段视为一般货物列车）
-    n_fast = FREIGHT_DOWN["直达(空)"] + FREIGHT_UP["直达(重)"]
+    # 快货列车追加扣除（直达3对 = 上下行各3列）
+    n_fast = FREIGHT_DOWN["直达(空)"]  # 3对
     deduction_fast = (EPSILON_FAST_FREIGHT - 1) * n_fast
 
     total_deduction = deduction_passenger + deduction_pickup + deduction_fast
