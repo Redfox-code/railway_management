@@ -160,8 +160,8 @@ def print_table1(parallel_result, non_parallel_result):
     # 补充：非平行运行图通过能力
     print(f"\n  非平行运行图通过能力计算:")
     print(f"  旅客列车扣除: ε客 × n客 = {EPSILON_PASSENGER} × {N_PASSENGER} = {EPSILON_PASSENGER * N_PASSENGER}")
-    n_pickup = FREIGHT_DOWN["摘挂"] + FREIGHT_UP["摘挂"]
-    n_fast = FREIGHT_DOWN["直达(空)"] + FREIGHT_UP["直达(重)"]
+    n_pickup = max(FREIGHT_DOWN["摘挂"], FREIGHT_UP["摘挂"])
+    n_fast = FREIGHT_DOWN["直达(空)"]  # 3对（上下行各3列=3对）
     print(f"  摘挂列车追加扣除: (ε摘挂-1) × n摘挂 = {EPSILON_PICKUP - 1} × {n_pickup} = {(EPSILON_PICKUP - 1) * n_pickup:.1f}")
     print(f"  快货列车追加扣除: (ε快货-1) × n快货 = {EPSILON_FAST_FREIGHT - 1:.1f} × {n_fast} = {(EPSILON_FAST_FREIGHT - 1) * n_fast:.1f}")
     total_deduction = EPSILON_PASSENGER * N_PASSENGER + (EPSILON_PICKUP - 1) * n_pickup + (EPSILON_FAST_FREIGHT - 1) * n_fast
@@ -607,8 +607,8 @@ def save_to_xlsx(parallel_result, non_parallel_result, table2_rows):
 
     sections = parallel_result["section_details"]
     n_parallel = parallel_result["n_parallel"]
-    n_pickup = FREIGHT_DOWN["摘挂"] + FREIGHT_UP["摘挂"]
-    n_fast = FREIGHT_DOWN["直达(空)"] + FREIGHT_UP["直达(重)"]
+    n_pickup = max(FREIGHT_DOWN["摘挂"], FREIGHT_UP["摘挂"])
+    n_fast = FREIGHT_DOWN["直达(空)"]  # 3对（上下行各3列=3对）
     total_ded = EPSILON_PASSENGER * N_PASSENGER + (EPSILON_PICKUP - 1) * n_pickup + (EPSILON_FAST_FREIGHT - 1) * n_fast
     n_non = int(n_parallel - total_ded)
 
