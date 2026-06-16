@@ -79,17 +79,17 @@ PASSENGER_TRAINS = [
 ]
 N_PASSENGER = len(PASSENGER_TRAINS) // 2  # 2 对
 
-# 货物列车（下行 A→B，重车方向）
+# 货物列车（下行 A→B，空车方向）
 FREIGHT_DOWN = {
-    "直达(空)": 3,      # 车次范围 86001-86997
-    "区段": 5,          # 车次范围 30001-39997
-    "摘挂": 2,          # 车次范围 40001-44997
+    "直达(空)": 3,      # 仅3列直达空车
+    "区段": 0,
+    "摘挂": 0,
 }
-# 货物列车（上行 B→A，空车方向）
+# 货物列车（上行 B→A，重车方向）
 FREIGHT_UP = {
-    "直达(重)": 3,      # 车次范围 10002-19998
-    "区段": 5,          # 车次范围 30002-39998
-    "摘挂": 1,          # 车次范围 40002-44998
+    "直达(重)": 3,      # 3列直达重车
+    "区段": 5,          # 5列区段列车
+    "摘挂": 1,          # 1列摘挂列车
 }
 
 TOTAL_FREIGHT_DOWN = sum(FREIGHT_DOWN.values())
@@ -416,15 +416,15 @@ def generate_timetable(parallel_result, non_parallel_result):
     for i in range(remaining_down):
         t = int(start_t + i * interval)
         down_specs.append({
-            "id": f"3000{i+1}", "type": "区段" if i < FREIGHT_DOWN["区段"] else "直达",
+            "id": f"8600{i+1}", "type": "直达",
             "dir": "down", "depart_time": t,
         })
 
     up_specs = []
+    # 上行需要在24h内全部到达，使用更紧凑的间隔
+    up_interval = (end_t - start_t) / max(remaining_up + 1, 1)
     for i in range(remaining_up):
-        t = int(start_t + interval/2 + i * interval)
-        if t > end_t:
-            t = int(start_t + (i - remaining_up/2) * interval)
+        t = int(start_t + (i + 1) * up_interval)
         up_specs.append({
             "id": f"1000{i+2}", "type": "区段" if i < FREIGHT_UP["区段"] else "直达",
             "dir": "up", "depart_time": t,
