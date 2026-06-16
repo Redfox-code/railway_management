@@ -70,7 +70,7 @@ def get_meet_plan(section_idx):
 
 
 def print_table1(parallel_result, non_parallel_result):
-    """打印附表1：A-B 区段区间通过能力计算表"""
+    """打印附表1：A-B 区段区间通过能力计算表 (按站排列，τ为车站属性)"""
 
     sections = parallel_result["section_details"]
     n_parallel = parallel_result["n_parallel"]
@@ -79,13 +79,13 @@ def print_table1(parallel_result, non_parallel_result):
     print("  附表1  A-B 区段区间通过能力计算表")
     print("=" * 140)
 
-    # 表头 — 两行
+    # 表头
     header1 = (
-        f"{'':─^6} {'':─^6} {'':─^10} {'':─^8} {'区间运行时间(min)':─^34} "
+        f"{'':─^6} {'':─^8} {'':─^10} {'':─^8} {'区间运行时间(min)':─^34} "
         f"{'车站间隔时间(min)':─^26} {'':─^10} {'':─^8} {'':─^8} {'T周':─^8} {'N平行':─^8}"
     )
     header2 = (
-        f"{'站名':^6} {'正线数':^6} {'闭塞方法':^10} {'距离km':^8} "
+        f"{'站名':^6} {'到发线':^8} {'闭塞方法':^10} {'区间距离':^8} "
         f"{'上行':^8} {'下行':^8} {'t起':^8} {'t停':^8} "
         f"{'τ不':^8} {'τ会':^8} {'τ空1':^8} {'τ空2':^8} "
         f"{'t技停':^8} {'会车方案':^8} {'(min)':^8} {'(对/天)':^8}"
@@ -94,34 +94,63 @@ def print_table1(parallel_result, non_parallel_result):
     print(header2)
     print("─" * 140)
 
-    # 数据行 — 每个区间一行
-    for i, sec in enumerate(sections):
-        section_name = sec["section"]
-        t_down_raw = sec["t_down"]
-        t_up_raw = sec["t_up"]
-        t_down_total = sec["t_down_total"]
-        t_up_total = sec["t_up_total"]
-        t_period = sec["t_period"]
-        distance = sec["distance"]
+    # τ不/τ会 按站的值 (7个站)
+    # A: τ会=2, τ不=-  |  a: τ不=5 τ会=3  |  b: τ不=5 τ会=3
+    # c: τ不=5 τ会=3  |  d: τ不=5 τ会=3  |  e: τ不=5 τ会=3  |  B: τ会=2 τ不=-
+    TAU_BU_STATION  = [0, 5, 5, 5, 5, 5, 0]   # τ不 by station
+    TAU_HUI_STATION = [2, 3, 3, 3, 3, 3, 2]   # τ会 by station
+    TRACKS_STATION  = [5, 3, 2, 3, 3, 2, 5]   # 到发线
+    T_START_STATION = [0, 1, 1, 1, 1, 1, 0]   # t起
+    T_STOP_STATION  = [0, 1, 1, 1, 1, 1, 0]   # t停
 
-        # 该区间平行通过能力
-        available_time = 1440 - T_MAINTENANCE
-        n_parallel_sec = available_time / t_period
+    # 运行时分 (6个区间)
+    from train_diagram import UP_RUNNING, DOWN_RUNNING, DISTANCES
 
-        # 技术作业停站时间（中间站0）
-        tech_stop = 0
+    available_time = 1440 - T_MAINTENANCE
 
-        # 会车方案：根据两端车站股道数选择（4种标准方案）
-        meet_plan = get_meet_plan(i)
+    # 逐站输出 (7站)
+    for station_idx in range(N_STATIONS):
+        station = STATIONS[station_idx]
+        track_count = TRACKS_STATION[station_idx]
+        tau_b = TAU_BU_STATION[station_idx]
+        tau_h = TAU_HUI_STATION[station_idx]
+        t_start = T_START_STATION[station_idx]
+        t_stop = T_STOP_STATION[station_idx]
+
+        # 区间数据 (本站到下一站, 终端站B无下一区间)
+        if station_idx < N_STATIONS - 1:
+            sec = sections[station_idx]
+            dist = DISTANCES[station_idx]
+            t_up = UP_RUNNING[station_idx]
+            t_down = DOWN_RUNNING[station_idx]
+            t_period = sec["t_period"]
+            n_par_sec = available_time / t_period
+            meet = get_meet_plan(station_idx)
+        else:
+            dist = "—"
+            t_up = "—"
+            t_down = "—"
+            t_period = "—"
+            n_par_sec = "—"
+            meet = "—"
+
+        t_up_str = f"{t_up:^8}" if isinstance(t_up, int) else f"{t_up:^8}"
+        t_down_str = f"{t_down:^8}" if isinstance(t_down, int) else f"{t_down:^8}"
+        t_per_str = f"{t_period:^8}" if isinstance(t_period, int) else f"{t_period:^8}"
+        n_par_str = f"{n_par_sec:^8.1f}" if isinstance(n_par_sec, float) else f"{n_par_sec:^8}"
+        dist_str = f"{dist:^8}" if isinstance(dist, int) else f"{dist:^8}"
+
+        tau_b_str = f"{tau_b:^8}" if tau_b > 0 else f"{'—':^8}"
+        tau_h_str = f"{tau_h:^8}" if tau_h > 0 else f"{'—':^8}"
 
         print(
-            f"{section_name:^6} {'单线':^6} {'半自动':^10} {distance:^8} "
-            f"{t_up_raw:^8} {t_down_raw:^8} {T_START:^8} {T_STOP:^8} "
-            f"{TAU_UNSIM:^8} {TAU_MEET:^8} {'—':^8} {'—':^8} "
-            f"{tech_stop:^8} {meet_plan:^8} {t_period:^8} {n_parallel_sec:^8.1f}"
+            f"{station:^6} {track_count:^8} {'半自动':^10} {dist_str} "
+            f"{t_up_str} {t_down_str} {t_start:^8} {t_stop:^8} "
+            f"{tau_b_str} {tau_h_str} {'—':^8} {'—':^8} "
+            f"{0:^8} {meet:^8} {t_per_str} {n_par_str}"
         )
 
-    # 限制区间标注
+    # 限制区间
     restrictive = max(sections, key=lambda s: s["t_period"])
     print("─" * 140)
     print(f"  限制区间: {restrictive['section']} (T周 = {restrictive['t_period']} min)")
@@ -590,7 +619,7 @@ def save_to_xlsx(parallel_result, non_parallel_result, table2_rows):
 
     # -- 表头 Row 2 (第1层分类) --
     r2_labels = {
-        1: "站名", 2: "正线数", 3: "闭塞方法", 4: "区间距离",
+        1: "站名", 2: "到发线", 3: "闭塞方法", 4: "区间距离",
     }
     # 合并区间运行时间 (5-8), 车站间隔时间 (9-12)
     merges_r2 = [
@@ -634,17 +663,39 @@ def save_to_xlsx(parallel_result, non_parallel_result, table2_rows):
     for r in [2, 3, 4]:
         style_header_row(ws1, r, N_COL1, fill=HEADER_FILL, font=HEADER_FONT_W)
 
-    # -- 数据行 (6个区间) --
-    for i, sec in enumerate(sections):
-        r = 5 + i
-        avail = 1440 - T_MAINTENANCE
-        n_par_sec = round(avail / sec["t_period"], 1)
+    # 站级数据 (τ不/τ会/t起/t停 是车站属性)
+    TAU_BU_ST  = [0, 5, 5, 5, 5, 5, 0]   # τ不 by station
+    TAU_HUI_ST = [2, 3, 3, 3, 3, 3, 2]   # τ会 by station
+    TRACKS_ST  = [5, 3, 2, 3, 3, 2, 5]   # 到发线
+    TS_START   = [0, 1, 1, 1, 1, 1, 0]   # t起
+    TS_STOP    = [0, 1, 1, 1, 1, 1, 0]   # t停
+    avail = 1440 - T_MAINTENANCE
+
+    # -- 数据行 (7个站) --
+    for st_idx in range(N_STATIONS):
+        r = 5 + st_idx
+        station = STATIONS[st_idx]
+        tau_b = TAU_BU_ST[st_idx]
+        tau_h = TAU_HUI_ST[st_idx]
+        t_start = TS_START[st_idx]
+        t_stop = TS_STOP[st_idx]
+
+        if st_idx < N_STATIONS - 1:
+            sec = sections[st_idx]
+            dist = DISTANCES[st_idx]
+            t_up = UP_RUNNING[st_idx]
+            t_down = DOWN_RUNNING[st_idx]
+            t_per = sec["t_period"]
+            n_par = round(avail / t_per, 1)
+            meet = get_meet_plan(st_idx)
+        else:
+            dist = "—"; t_up = "—"; t_down = "—"; t_per = "—"; n_par = "—"; meet = "—"
 
         data = {
-            1: sec["section"], 2: "单线", 3: "半自动", 4: sec["distance"],
-            5: sec["t_up"], 6: sec["t_down"], 7: T_START, 8: T_STOP,
-            9: TAU_UNSIM, 10: TAU_MEET, 11: "", 12: "",
-            13: 0, 14: get_meet_plan(i), 15: sec["t_period"], 16: n_par_sec,
+            1: station, 2: TRACKS_ST[st_idx], 3: "半自动", 4: dist,
+            5: t_up, 6: t_down, 7: t_start, 8: t_stop,
+            9: tau_b if tau_b > 0 else "—", 10: tau_h if tau_h > 0 else "—", 11: "", 12: "",
+            13: 0, 14: meet, 15: t_per, 16: n_par,
             17: EPSILON_PASSENGER, 18: N_PASSENGER,
             19: EPSILON_PICKUP, 20: n_pickup,
             21: "", 22: "", 23: "",
@@ -654,7 +705,7 @@ def save_to_xlsx(parallel_result, non_parallel_result, table2_rows):
         style_data_row(ws1, r, N_COL1)
 
     # 限制区间行
-    r = 5 + len(sections)
+    r = 5 + N_STATIONS
     restrictive = max(sections, key=lambda s: s["t_period"])
     for col in range(1, N_COL1 + 1):
         ws1.cell(row=r, column=col, value="").border = THIN_BORDER
