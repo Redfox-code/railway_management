@@ -12,3 +12,4 @@ vision.py
 
 # claude-vision-skill 上游仓库
 claude-vision-skill/
+__pycache__/
